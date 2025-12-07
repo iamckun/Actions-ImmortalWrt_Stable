@@ -41,18 +41,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    # ✨ 关键修改 1：迁移工作目录到 /mnt，使用 66GB 空间
-    - name: Move workspace to /mnt (use bigger disk)
-      run: |
-        sudo mkdir -p /mnt/workspace
-        sudo chown $USER:$GROUPS /mnt/workspace
-        echo ">> Moving workspace to /mnt/workspace..."
-        mv "$GITHUB_WORKSPACE"/* /mnt/workspace/ 2>/dev/null || true
-        rm -rf "$GITHUB_WORKSPACE"
-        ln -s /mnt/workspace "$GITHUB_WORKSPACE"
-        echo ">> Workspace moved."
-        df -h
-
     - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -63,39 +51,31 @@ jobs:
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p $GITHUB_WORKSPACE
-        sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
+        sudo mkdir -p /mnt/workdir
+        sudo chown $USER:$GROUPS /mnt/workdir
         
-   # ✨ 关键修改 2：加强清理力度（不改你的原功能）
     - name: Free up disk space
       run: |
+        set -euo pipefail
         echo ">>> before cleanup"
         df -h || true
-
         sudo apt-get clean || true
         sudo rm -rf /var/lib/apt/lists/* || true
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
         sudo rm -rf /tmp/* /var/tmp/* || true
-
-        sudo rm -rf /usr/local/share/pip-cache \
-                    /usr/local/lib/node_modules \
-                    /usr/local/share/swift \
-                    /usr/share/swift \
-                    /usr/lib/jvm || true
-
         if command -v docker >/dev/null 2>&1; then
           docker system prune -af || true
-          sudo rm -rf /var/lib/docker || true
+          docker rmi $(docker images -a -q) 2>/dev/null || true
         fi
-
         echo ">>> after cleanup"
         df -h || true
 
     - name: Clone source code
-      working-directory: $GITHUB_WORKSPACE
+      working-directory: /mnt/workdir
       run: |
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf $GITHUB_WORKSPACE/openwrt $GITHUB_WORKSPACE/openwrt
+        ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
       run: |
@@ -140,7 +120,7 @@ jobs:
         cd openwrt
         df -hT
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        make -j1 || make -j1 || make -j1 V=s
         echo "::set-output name=status::success"
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
