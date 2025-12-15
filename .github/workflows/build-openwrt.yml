@@ -51,8 +51,8 @@ jobs:
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
+        sudo mkdir -p /mnt/workdir
+        sudo chown $USER:$GROUPS /mnt/workdir
         
     - name: Free up disk space
       run: |
@@ -71,11 +71,11 @@ jobs:
         df -h || true
 
     - name: Clone source code
-      working-directory: /workdir
+      working-directory: /mnt/workdir
       run: |
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
       run: |
@@ -120,7 +120,7 @@ jobs:
         cd openwrt
         df -hT
         echo -e "$(nproc) thread compile"
-        make -j1 || make -j1 || make -j1 V=s
+        make -j$(nproc) || make -j1 || make -j1 V=s
         echo "::set-output name=status::success"
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -209,19 +209,29 @@ jobs:
       with:
         retain_days: 1
         keep_minimum_runs: 3
+    # - name: Send Telegram notification  
+    #   if: steps.tag.outputs.status == 'success' && !cancelled()  
+    #   uses: appleboy/telegram-action@master 
+    #   env:   
+    #     TELEGRAM_CHAT_ID: ${{ secrets.ID }}  
+    #     TELEGRAM_BOT_TOKEN: ${{ secrets.TOKEN }} 
+    #   with:  
+    #     to: ${{ env.TELEGRAM_CHAT_ID }}  # 替换为你的Telegram聊天ID或用户名  
+    #     token: ${{ env.TELEGRAM_BOT_TOKEN }}  # 替换为你的Telegram Bot Token  
+    #     message: |
+    #         基于ImmortalWrt_Stable的X86_64 OpenWrt纯净版更新:
+    #         https://github.com/iamckun/Actions-ImmortalWrt_Stable/releases/tag/${{ steps.tag.outputs.release_tag }}
+    #         更新日志：
+    #         更新ImmortalWrt_Stable最新源码
+    #         源码更新内容: ${{ steps.tag.outputs.commits }}
+    #         查看更新日志: ${{ steps.tag.outputs.commit_url }}
     - name: Send Telegram notification  
-      if: steps.tag.outputs.status == 'success' && !cancelled()  
-      uses: appleboy/telegram-action@master 
-      env:   
-        TELEGRAM_CHAT_ID: ${{ secrets.ID }}  
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TOKEN }} 
-      with:  
-        to: ${{ env.TELEGRAM_CHAT_ID }}  # 替换为你的Telegram聊天ID或用户名  
-        token: ${{ env.TELEGRAM_BOT_TOKEN }}  # 替换为你的Telegram Bot Token  
-        message: |
-            基于ImmortalWrt_Stable的X86_64 OpenWrt纯净版更新:
-            https://github.com/iamckun/Actions-ImmortalWrt_Stable/releases/tag/${{ steps.tag.outputs.release_tag }}
-            更新日志：
-            更新ImmortalWrt_Stable最新源码
-            源码更新内容: ${{ steps.tag.outputs.commits }}
-            查看更新日志: ${{ steps.tag.outputs.commit_url }}
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      run: |
+        curl -s -X POST https://api.telegram.org/bot${{ secrets.TOKEN }}/sendMessage \
+          -d chat_id=${{ secrets.ID }} \
+          -d text="基于ImmortalWrt_Stable的X86_64 OpenWrt纯净版更新:
+          https://github.com/iamckun/Actions-ImmortalWrt_Stable/releases/tag/${{ steps.tag.outputs.release_tag }}
+          更新日志：
+          源码更新内容: ${{ steps.tag.outputs.commits }}
+          查看更新日志: ${{ steps.tag.outputs.commit_url }}"

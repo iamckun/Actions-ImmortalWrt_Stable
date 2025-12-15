@@ -15,10 +15,10 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: v24.10.0-rc2
 
-on:
+#on:
   #workflow_dispatch:
-  schedule:
-    - cron: 0 12 * * *
+#  schedule:
+#    - cron: 0 12 * * *
 
 jobs:
   check:
